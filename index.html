@@ -5,80 +5,226 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Navigation dans le bâtiment</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
-  canvas#plan { width: 100%; max-width: 600px; border: 1px solid #aaa; display: block; margin-top: 10px; }
-  select, button { padding: 8px 12px; font-size: 1rem; }
-  #zoneScan { display: none; max-width: 600px; margin-top: 10px; }
-  #video { width: 100%; border-radius: 8px; background: #000; }
-  .test { margin-top: 16px; padding: 8px; background: #f0f0f0; max-width: 600px; font-size: 0.9rem; }
+  :root {
+    --bg: #f4f5f7;
+    --carte: #ffffff;
+    --texte: #1a1a1a;
+    --doux: #6b7280;
+    --bordure: #d9dce1;
+    --accent: #2563eb;
+    --ok: #16a34a;
+    --erreur: #e11d48;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --carte: #1b1e25;
+      --texte: #f1f2f4;
+      --doux: #9aa1ad;
+      --bordure: #2c303a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--texte);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 17px;
+    line-height: 1.4;
+    padding: 16px 16px 40px;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 4px 0 16px; }
+  h2 { font-size: 1.05rem; margin: 0; }
+
+  /* Les cartes (une par étape) */
+  .carte {
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .carte.inactive { opacity: 0.45; }
+  .entete { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.95rem; flex-shrink: 0;
+  }
+
+  /* Liste déroulante et boutons : grands, faciles à toucher */
+  select {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 12px;
+    font-size: 1rem;
+    border: 1px solid var(--bordure);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--texte);
+  }
+  button {
+    min-height: 48px;
+    padding: 10px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 10px;
+    border: 1px solid var(--bordure);
+    background: var(--bg);
+    color: var(--texte);
+    cursor: pointer;
+  }
+  button.primaire {
+    width: 100%;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.secondaire { width: 100%; margin-top: 8px; }
+
+  /* Bandeau de message */
+  #message {
+    padding: 12px 14px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-left: 6px solid var(--accent);
+  }
+  #message[data-type="ok"]     { border-left-color: var(--ok); }
+  #message[data-type="erreur"] { border-left-color: var(--erreur); }
+
+  /* Zone de scan */
+  #zoneScan { display: none; margin-top: 10px; }
+  #video { width: 100%; border-radius: 12px; background: #000; display: block; }
+  #destinationTexte { margin: 0 0 10px; color: var(--doux); }
+
+  /* Le plan */
+  canvas#plan {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  details { margin-top: 20px; color: var(--doux); font-size: 0.9rem; }
+  details select { margin-top: 8px; }
 </style>
 </head>
 <body>
+<main>
 
-<h1>Navigation</h1>
+<h1 id="titre">Navigation</h1>
 
-<!-- ÉTAPE 1 : choisir où on est -->
-<label>1. Où êtes-vous ?
+<!-- Messages pour l'utilisateur -->
+<div id="message" data-type="info"></div>
+
+<!-- ÉTAPE 1 -->
+<section class="carte" id="etape1">
+  <div class="entete"><span class="num">1</span><h2>Où êtes-vous ?</h2></div>
   <select id="choixPosition"></select>
-</label>
+</section>
 
-<p id="message"></p>
+<!-- ÉTAPE 2 -->
+<section class="carte inactive" id="etape2">
+  <div class="entete"><span class="num">2</span><h2>Où allez-vous ?</h2></div>
+  <p id="destinationTexte"></p>
+  <button class="primaire" id="btnScan">Scanner le QR code</button>
+  <div id="zoneScan">
+    <video id="video" playsinline muted></video>
+    <button class="secondaire" id="btnAnnulerScan">Annuler</button>
+  </div>
+</section>
 
-<!-- ÉTAPE 2 : la caméra pour scanner la destination (cachée au départ) -->
-<div id="zoneScan">
-  <video id="video" playsinline muted></video>
-  <button id="btnAnnulerScan">Annuler</button>
-</div>
+<!-- LE PLAN -->
+<section class="carte">
+  <canvas id="plan" width="600" height="400"></canvas>
+</section>
 
-<button id="btnChangerDestination" style="display:none; margin-top:8px;">Changer de destination</button>
-
-<canvas id="plan" width="600" height="400"></canvas>
-
-<!-- Pour tester sur ordinateur, sans QR code -->
-<div class="test">
-  Test (remplace le scan) :
+<details>
+  <summary>Mode test (ordinateur, sans QR code)</summary>
   <select id="choixTest"></select>
-</div>
+</details>
 
-<!-- La bibliothèque qui sait lire un QR code dans une image -->
+</main>
+
+<!-- Bibliothèque de lecture de QR code -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 
 <script>
-// =====================================================
-// A. LES DONNÉES
-// =====================================================
-const points = {
-  entree:    { nom: "Entrée",      x: 313, y: 380 },
-  couloir:   { nom: "Couloir",     x: 307, y: 212 },
-  couloirAD: { nom: "Couloir A-D", x: 155, y: 188 },
-  couloirCE: { nom: "Couloir C-E", x: 453, y: 209 },
-  salleA:    { nom: "Salle A",     x: 124, y: 144 },
-  salleB:    { nom: "Salle B",     x: 322, y: 133 },
-  salleC:    { nom: "Salle C",     x: 499, y: 132 },
-  salleD:    { nom: "Salle D",     x: 120, y: 250 },
-  salleE:    { nom: "Salle E",     x: 490, y: 250 }
+// =====================================================================
+// ⚙️  CONFIG : LA SEULE PARTIE À MODIFIER POUR CHANGER DE PLAN
+// =====================================================================
+const CONFIG = {
+
+  // Le titre affiché en haut de la page
+  titre: "Navigation – École",
+
+  // L'image du plan, dans le même dossier que ce fichier.
+  //   null          → on utilise le plan d'exemple dessiné par le code
+  //   "plan.png"    → on utilise ton image
+  // Les coordonnées x et y ci-dessous sont en pixels de CETTE image.
+  image: null,
+
+  // Les points : salles ET intersections de couloir.
+  // Pour trouver x et y : ajoute ?debug dans l'adresse et clique sur le plan.
+  points: {
+    entree:    { nom: "Entrée",      x: 313, y: 380 },
+    couloir:   { nom: "Couloir",     x: 307, y: 212 },
+    couloirAD: { nom: "Couloir A-D", x: 155, y: 188 },
+    couloirCE: { nom: "Couloir C-E", x: 453, y: 209 },
+    salleA:    { nom: "Salle A",     x: 124, y: 144 },
+    salleB:    { nom: "Salle B",     x: 322, y: 133 },
+    salleC:    { nom: "Salle C",     x: 499, y: 132 },
+    salleD:    { nom: "Salle D",     x: 120, y: 250 },
+    salleE:    { nom: "Salle E",     x: 490, y: 250 }
+  },
+
+  // Les liens : "on peut aller directement de ce point à celui-là".
+  // Ils empêchent la ligne de traverser les murs.
+  liens: [
+    ["entree", "couloir"],
+    ["couloir", "couloirAD"],
+    ["couloir", "couloirCE"],
+    ["couloir", "salleB"],
+    ["couloirAD", "salleA"],
+    ["couloirAD", "salleD"],
+    ["couloirCE", "salleC"],
+    ["couloirCE", "salleE"]
+  ],
+
+  // Les lieux proposés comme position de départ et comme destination
+  // (les intersections n'en font pas partie).
+  lieux: ["entree", "salleA", "salleB", "salleC", "salleD", "salleE"]
 };
-
-const liens = [
-  ["entree", "couloir"],
-  ["couloir", "couloirAD"],
-  ["couloir", "couloirCE"],
-  ["couloir", "salleB"],
-  ["couloirAD", "salleA"],
-  ["couloirAD", "salleD"],
-  ["couloirCE", "salleC"],
-  ["couloirCE", "salleE"]
-];
-
-const lieux = ["entree", "salleA", "salleB", "salleC", "salleD", "salleE"];
+// =====================================================================
+// FIN DE LA CONFIG : en dessous, rien à changer pour un nouveau plan
+// =====================================================================
 
 
-// =====================================================
-// B. TROUVER LE CHEMIN (inchangé)
-// =====================================================
+const points = CONFIG.points;
+const params = new URLSearchParams(window.location.search);
+const debug = params.has("debug");
+
+document.getElementById("titre").textContent = CONFIG.titre;
+document.title = CONFIG.titre;
+
+
+// ---------------------------------------------------------------------
+// A. Trouver le chemin
+// ---------------------------------------------------------------------
 const voisins = {};
 for (const id in points) voisins[id] = [];
-for (const [a, b] of liens) {
+for (const [a, b] of CONFIG.liens) {
+  if (!points[a] || !points[b]) {
+    console.warn("Lien ignoré, point inconnu :", a, b);
+    continue;
+  }
   voisins[a].push(b);
   voisins[b].push(a);
 }
@@ -111,14 +257,19 @@ function trouverChemin(depart, arrivee) {
 }
 
 
-// =====================================================
-// C. DESSINER (inchangé)
-// =====================================================
+// ---------------------------------------------------------------------
+// B. Dessiner
+// ---------------------------------------------------------------------
 const canvas = document.getElementById("plan");
 const ctx = canvas.getContext("2d");
+const imagePlan = new Image();
 
-function dessinerPlan() {
-  ctx.fillStyle = "white";
+// Un plan plus grand a besoin de traits et de textes plus grands :
+// "u" s'adapte à la taille du canvas (1 pour le plan d'exemple).
+function u() { return canvas.width / 600; }
+
+function dessinerPlanExemple() {
+  ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, 600, 400);
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 3;
@@ -137,9 +288,17 @@ function dessinerPlan() {
   ctx.fillText("Salle E", 470, 315);
 }
 
+function dessinerPlan() {
+  if (CONFIG.image) {
+    ctx.drawImage(imagePlan, 0, 0);
+  } else {
+    dessinerPlanExemple();
+  }
+}
+
 function dessinerLigne(chemin) {
   ctx.strokeStyle = "#2563eb";
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 6 * u();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -150,70 +309,105 @@ function dessinerLigne(chemin) {
   ctx.stroke();
 }
 
+// Un rond de couleur avec un halo, et un texte lisible (contour blanc)
 function dessinerPastille(id, couleur, texte) {
   const p = points[id];
+  const k = u();
+
+  ctx.fillStyle = couleur + "40";   // couleur transparente pour le halo
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 17 * k, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = couleur;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 9 * k, 0, Math.PI * 2);
   ctx.fill();
-  ctx.font = "bold 14px sans-serif";
-  ctx.fillText(texte, p.x + 14, p.y - 12);
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2 * k;
+  ctx.stroke();
+
+  ctx.font = "bold " + (15 * k) + "px sans-serif";
+  ctx.lineWidth = 4 * k;
+  ctx.strokeStyle = "#fff";
+  ctx.strokeText(texte, p.x + 16 * k, p.y - 14 * k);
+  ctx.fillStyle = couleur;
+  ctx.fillText(texte, p.x + 16 * k, p.y - 14 * k);
+}
+
+// Mode debug : montre tous les points et liens
+function dessinerGrapheDebug() {
+  const k = u();
+  ctx.strokeStyle = "rgba(37, 99, 235, 0.5)";
+  ctx.lineWidth = 2 * k;
+  for (const [a, b] of CONFIG.liens) {
+    if (!points[a] || !points[b]) continue;
+    ctx.beginPath();
+    ctx.moveTo(points[a].x, points[a].y);
+    ctx.lineTo(points[b].x, points[b].y);
+    ctx.stroke();
+  }
+  ctx.font = (12 * k) + "px sans-serif";
+  for (const id in points) {
+    ctx.fillStyle = "#2563eb";
+    ctx.beginPath();
+    ctx.arc(points[id].x, points[id].y, 4 * k, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillText(id, points[id].x + 7 * k, points[id].y - 6 * k);
+  }
 }
 
 
-// =====================================================
-// D. LE SCANNER DE QR CODE (nouveau)
-// =====================================================
+// ---------------------------------------------------------------------
+// C. Scanner de QR code
+// ---------------------------------------------------------------------
 const video = document.getElementById("video");
 const zoneScan = document.getElementById("zoneScan");
-const canvasScan = document.createElement("canvas");   // canvas invisible pour analyser les images
+const btnScan = document.getElementById("btnScan");
+const canvasScan = document.createElement("canvas");
 const ctxScan = canvasScan.getContext("2d", { willReadFrequently: true });
 
-let flux = null;          // le flux de la caméra
-let scanEnCours = false;  // est-ce qu'on est en train de scanner ?
-let messageScan = "";     // message d'erreur éventuel pendant le scan
+let flux = null;
+let scanEnCours = false;
 
-// Un QR code contient une adresse comme ".../?arrivee=salleC".
-// Cette fonction en extrait "salleC" (ou renvoie null si ce n'est pas un de nos QR codes).
+// Le QR contient ".../?arrivee=salleC" : on en extrait "salleC"
 function extraireDestination(texte) {
   let id = null;
   try {
-    id = new URL(texte).searchParams.get("arrivee");   // cas : adresse complète
+    id = new URL(texte).searchParams.get("arrivee");
   } catch (e) {
-    id = texte;                                        // cas : juste "salleC" écrit dans le QR
+    id = texte;
   }
   return (id && points[id]) ? id : null;
 }
 
-// Allumer la caméra et commencer à lire des images
 async function demarrerScan() {
-  messageScan = "";
+  if (scanEnCours) return;
   try {
     flux = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }             // caméra arrière
+      video: { facingMode: "environment" }
     });
   } catch (e) {
-    message.textContent = "Caméra indisponible ou refusée. Autorisez-la, ou scannez avec l'appareil photo du téléphone.";
+    dire("Caméra indisponible ou refusée. Autorisez-la dans les réglages, ou scannez avec l’appareil photo du téléphone.", "erreur");
     return;
   }
   video.srcObject = flux;
   await video.play();
   zoneScan.style.display = "block";
+  btnScan.style.display = "none";
   scanEnCours = true;
-  message.textContent = "Scannez maintenant le QR code de votre destination.";
+  dire("Visez le QR code de votre destination.", "info");
   boucleScan();
 }
 
-// Couper la caméra
 function arreterScan() {
   scanEnCours = false;
   if (flux) flux.getTracks().forEach(t => t.stop());
   flux = null;
   zoneScan.style.display = "none";
+  btnScan.style.display = "block";
 }
 
-// Cette fonction se répète tant qu'on scanne : à chaque tour,
-// on prend une image de la vidéo et on cherche un QR code dedans.
 function boucleScan() {
   if (!scanEnCours) return;
 
@@ -227,105 +421,145 @@ function boucleScan() {
     if (resultat) {
       const id = extraireDestination(resultat.data);
       if (id) {
-        destination = id;     // on a la destination !
+        destination = id;
         arreterScan();
         afficher();
         return;
-      } else {
-        message.textContent = "Ce QR code n'est pas reconnu, essayez-en un autre.";
       }
+      dire("Ce QR code n’est pas reconnu, essayez-en un autre.", "erreur");
     }
   }
-  requestAnimationFrame(boucleScan);   // on recommence au prochain affichage
+  requestAnimationFrame(boucleScan);
 }
 
 
-// =====================================================
-// E. RELIER TOUT
-// =====================================================
+// ---------------------------------------------------------------------
+// D. Tout relier
+// ---------------------------------------------------------------------
 const choixPosition = document.getElementById("choixPosition");
 const choixTest = document.getElementById("choixTest");
-const message = document.getElementById("message");
-const btnChanger = document.getElementById("btnChangerDestination");
+const messageEl = document.getElementById("message");
+const etape2 = document.getElementById("etape2");
+const destinationTexte = document.getElementById("destinationTexte");
 
-// La destination peut déjà venir de l'adresse (si on a scanné avec l'appareil photo du téléphone)
-let destination = new URLSearchParams(window.location.search).get("arrivee");
+function dire(texte, type) {
+  messageEl.textContent = texte;
+  messageEl.dataset.type = type || "info";
+}
+
+// La destination peut venir de l'adresse (scan avec l'appareil photo du téléphone)
+let destination = params.get("arrivee");
 if (destination && !points[destination]) destination = null;
 
 function afficher() {
   dessinerPlan();
-  btnChanger.style.display = "none";
+  if (debug) dessinerGrapheDebug();
+
   const position = choixPosition.value;
+  etape2.classList.toggle("inactive", !position);
+
+  // Texte de l'étape 2
+  if (destination) {
+    destinationTexte.textContent = "Destination : " + points[destination].nom;
+    btnScan.textContent = "Changer de destination";
+  } else {
+    destinationTexte.textContent = "Scannez le QR code de la salle où vous voulez aller.";
+    btnScan.textContent = "Scanner le QR code";
+  }
 
   if (!position) {
-    message.textContent = "Choisissez d'abord où vous êtes.";
+    dire("Commencez par choisir l’endroit où vous êtes.", "info");
     return;
   }
   dessinerPastille(position, "#e11d48", "Vous êtes ici");
 
   if (!destination) {
-    if (!scanEnCours) message.textContent = "Scannez le QR code de votre destination.";
+    if (!scanEnCours) dire("Scannez le QR code de votre destination.", "info");
     return;
   }
   if (destination === position) {
-    message.textContent = "Vous y êtes déjà !";
-    btnChanger.style.display = "inline-block";
+    dire("Vous êtes déjà arrivé !", "ok");
     return;
   }
 
   const chemin = trouverChemin(position, destination);
   if (!chemin) {
-    message.textContent = "Aucun chemin trouvé.";
+    dire("Aucun chemin trouvé entre ces deux endroits.", "erreur");
     return;
   }
   dessinerLigne(chemin);
   dessinerPastille(position, "#e11d48", "Vous êtes ici");
   dessinerPastille(destination, "#16a34a", points[destination].nom);
-  message.textContent = "Chemin : " + chemin.map(id => points[id].nom).join(" → ");
-  btnChanger.style.display = "inline-block";
+  dire("Suivez la ligne bleue jusqu’à : " + points[destination].nom, "ok");
 }
 
 // Remplir les listes
-choixPosition.innerHTML = '<option value="">(choisir)</option>';
-choixTest.innerHTML = '<option value="">(aucun)</option>';
-for (const id of lieux) {
+choixPosition.innerHTML = '<option value="">Choisir…</option>';
+choixTest.innerHTML = '<option value="">(aucune)</option>';
+for (const id of CONFIG.lieux) {
+  if (!points[id]) continue;
   choixPosition.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
   choixTest.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
 }
 if (destination) choixTest.value = destination;
 
-// *** LE LISTENER DEMANDÉ ***
-// Dès que la personne choisit sa position, on affiche le plan,
-// et si on ne connaît pas encore la destination, on ouvre la caméra.
+// Quand on choisit sa position : on affiche, et on ouvre la caméra si besoin
 choixPosition.addEventListener("change", () => {
   afficher();
-  if (choixPosition.value && !destination && !scanEnCours) {
-    demarrerScan();
-  }
+  if (choixPosition.value && !destination && !scanEnCours) demarrerScan();
 });
 
-// Bouton "Changer de destination" : on oublie l'ancienne et on rescanne
-btnChanger.addEventListener("click", () => {
+// Bouton "Scanner" / "Changer de destination"
+btnScan.addEventListener("click", () => {
+  if (!choixPosition.value) {
+    dire("Choisissez d’abord où vous êtes.", "erreur");
+    return;
+  }
   destination = null;
   choixTest.value = "";
   afficher();
   demarrerScan();
 });
 
-// Bouton "Annuler" pendant le scan
 document.getElementById("btnAnnulerScan").addEventListener("click", () => {
   arreterScan();
   afficher();
 });
 
-// Liste de test (ordinateur)
 choixTest.addEventListener("change", () => {
   arreterScan();
   destination = choixTest.value || null;
   afficher();
 });
 
-afficher();
+// Mode debug : un clic sur le plan affiche ses coordonnées
+canvas.addEventListener("click", e => {
+  if (!debug) return;
+  const r = canvas.getBoundingClientRect();
+  const x = Math.round((e.clientX - r.left) * canvas.width / r.width);
+  const y = Math.round((e.clientY - r.top) * canvas.height / r.height);
+  dire("Coordonnées : x: " + x + ", y: " + y, "info");
+});
+
+// Chargement du plan (image ou exemple), puis premier affichage
+function demarrer() {
+  if (!CONFIG.image) {
+    canvas.width = 600;
+    canvas.height = 400;
+    afficher();
+    return;
+  }
+  imagePlan.onload = () => {
+    canvas.width = imagePlan.naturalWidth;
+    canvas.height = imagePlan.naturalHeight;
+    afficher();
+  };
+  imagePlan.onerror = () => {
+    dire("Image du plan introuvable : " + CONFIG.image, "erreur");
+  };
+  imagePlan.src = CONFIG.image;
+}
+demarrer();
 </script>
 </body>
 </html>
