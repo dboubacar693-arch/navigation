@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navigation dans le bâtiment</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  canvas { width: 100%; max-width: 600px; border: 1px solid #aaa; display: block; margin-top: 10px; }
+  select { padding: 6px; font-size: 1rem; }
+  .test { margin-top: 16px; padding: 8px; background: #f0f0f0; max-width: 600px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>Navigation</h1>
+
+<!-- ÉTAPE 1 pour l'utilisateur : choisir où on est -->
+<label>1. Où êtes-vous ?
+  <select id="choixPosition"></select>
+</label>
+
+<p id="message"></p>
+<canvas id="plan" width="600" height="400"></canvas>
+
+<!-- Pour tester sans QR code : ça remplace le scan -->
+<div class="test">
+  Test (remplace le scan du QR code) :
+  <select id="choixTest"></select>
+</div>
+
+<script>
+// =====================================================
+// A. LES DONNÉES
+// =====================================================
+
+// Tous les points du plan : les salles ET les intersections.
+// "nom" est le texte affiché, x et y sont les coordonnées sur le plan.
+const points = {
+  entree:    { nom: "Entrée",      x: 313, y: 380 },
+  couloir:   { nom: "Couloir",     x: 307, y: 212 },   // intersection
+  couloirAD: { nom: "Couloir A-D", x: 155, y: 188 },   // intersection
+  couloirCE: { nom: "Couloir C-E", x: 453, y: 209 },   // intersection
+  salleA:    { nom: "Salle A",     x: 124, y: 144 },
+  salleB:    { nom: "Salle B",     x: 322, y: 133 },
+  salleC:    { nom: "Salle C",     x: 499, y: 132 },
+  salleD:    { nom: "Salle D",     x: 120, y: 250 },
+  salleE:    { nom: "Salle E",     x: 490, y: 250 }
+};
+
+// Les liens : "on peut aller directement de ce point à celui-là".
+// C'est ce qui empêche de traverser les murs : on ne peut suivre
+// QUE ces liens.
+const liens = [
+  ["entree", "couloir"],
+  ["couloir", "couloirAD"],
+  ["couloir", "couloirCE"],
+  ["couloir", "salleB"],
+  ["couloirAD", "salleA"],
+  ["couloirAD", "salleD"],
+  ["couloirCE", "salleC"],
+  ["couloirCE", "salleE"]
+];
+
+// Les points qu'on peut choisir comme position ou comme destination
+// (les intersections n'y sont pas).
+const lieux = ["entree", "salleA", "salleB", "salleC", "salleD", "salleE"];
+
+
+// =====================================================
+// B. TROUVER LE CHEMIN
+// =====================================================
+
+// Étape 1 : pour chaque point, la liste de ses voisins.
+// Exemple : voisins["couloir"] = ["entree", "couloirAD", "couloirCE", "salleB"]
+const voisins = {};
+for (const id in points) voisins[id] = [];
+for (const [a, b] of liens) {
+  voisins[a].push(b);
+  voisins[b].push(a);      // un lien marche dans les deux sens
+}
+
+// Étape 2 : chercher le chemin (parcours "en largeur").
+// Idée : on part du départ, on explore ses voisins, puis les voisins
+// de ses voisins, etc., en notant à chaque fois d'où on vient.
+// Dès qu'on tombe sur l'arrivée, on remonte la piste en arrière.
+function trouverChemin(depart, arrivee) {
+  const venantDe = {};            // venantDe["salleC"] = "couloirCE" ...
+  venantDe[depart] = null;
+  const file = [depart];          // les points qu'il reste à explorer
+
+  while (file.length > 0) {
+    const courant = file.shift(); // on prend le premier de la file
+    if (courant === arrivee) break;
+
+    for (const v of voisins[courant]) {
+      if (!(v in venantDe)) {     // pas encore visité
+        venantDe[v] = courant;
+        file.push(v);
+      }
+    }
+  }
+
+  if (!(arrivee in venantDe)) return null;   // aucun chemin
+
+  // On remonte de l'arrivée jusqu'au départ
+  const chemin = [];
+  let id = arrivee;
+  while (id !== null) {
+    chemin.unshift(id);           // ajouter au début
+    id = venantDe[id];
+  }
+  return chemin;                  // ex : ["entree","couloir","couloirCE","salleC"]
+}
+
+
+// =====================================================
+// C. DESSINER
+// =====================================================
+const canvas = document.getElementById("plan");
+const ctx = canvas.getContext("2d");
+
+function dessinerPlan() {
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, 600, 400);
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(20, 20, 560, 360);
+  ctx.strokeRect(20, 20, 200, 140);
+  ctx.strokeRect(220, 20, 180, 140);
+  ctx.strokeRect(400, 20, 180, 140);
+  ctx.strokeRect(20, 240, 200, 140);
+  ctx.strokeRect(400, 240, 180, 140);
+  ctx.fillStyle = "#999";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("Salle A", 90, 95);
+  ctx.fillText("Salle B", 280, 95);
+  ctx.fillText("Salle C", 470, 95);
+  ctx.fillText("Salle D", 90, 315);
+  ctx.fillText("Salle E", 470, 315);
+}
+
+function dessinerLigne(chemin) {
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(points[chemin[0]].x, points[chemin[0]].y);
+  for (let i = 1; i < chemin.length; i++) {
+    ctx.lineTo(points[chemin[i]].x, points[chemin[i]].y);
+  }
+  ctx.stroke();
+}
+
+function dessinerPastille(id, couleur, texte) {
+  const p = points[id];
+  ctx.fillStyle = couleur;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText(texte, p.x + 14, p.y - 12);
+}
+
+
+// =====================================================
+// D. RELIER TOUT : position (interface) + destination (QR code)
+// =====================================================
+const choixPosition = document.getElementById("choixPosition");
+const choixTest = document.getElementById("choixTest");
+const message = document.getElementById("message");
+
+// La destination vient de l'adresse du QR code : ?arrivee=salleC
+let destination = new URLSearchParams(window.location.search).get("arrivee");
+
+function afficher() {
+  dessinerPlan();
+  const position = choixPosition.value;
+
+  if (!position) {
+    message.textContent = "Choisissez d'abord où vous êtes.";
+    return;
+  }
+  dessinerPastille(position, "#e11d48", "Vous êtes ici");
+
+  if (!destination) {
+    message.textContent = "Scannez maintenant le QR code de votre destination.";
+    return;
+  }
+  if (!points[destination]) {
+    message.textContent = "QR code inconnu : « " + destination + " ».";
+    return;
+  }
+  if (destination === position) {
+    message.textContent = "Vous y êtes déjà !";
+    return;
+  }
+
+  const chemin = trouverChemin(position, destination);
+  if (!chemin) {
+    message.textContent = "Aucun chemin trouvé.";
+    return;
+  }
+  dessinerLigne(chemin);
+  dessinerPastille(position, "#e11d48", "Vous êtes ici");
+  dessinerPastille(destination, "#16a34a", points[destination].nom);
+  message.textContent = "Chemin : " + chemin.map(id => points[id].nom).join(" → ");
+}
+
+// Remplir les deux listes déroulantes
+choixPosition.innerHTML = '<option value="">(choisir)</option>';
+choixTest.innerHTML = '<option value="">(aucun)</option>';
+for (const id of lieux) {
+  choixPosition.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
+  choixTest.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
+}
+if (destination) choixTest.value = destination;
+
+choixPosition.addEventListener("change", afficher);
+choixTest.addEventListener("change", () => {
+  destination = choixTest.value || null;
+  afficher();
+});
+
+afficher();
+</script>
+</body>
+</html>
