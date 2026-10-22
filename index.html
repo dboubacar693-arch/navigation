@@ -134,10 +134,25 @@ function dessiner() {
       return;
     }
     ctx.beginPath();
-    trait.forEach((p, k) => {
-      const a = versEcran(p);
-      if (k === 0) ctx.moveTo(a.x, a.y); else ctx.lineTo(a.x, a.y);
-    });
+    const premier = versEcran(trait[0]);
+    ctx.moveTo(premier.x, premier.y);
+
+    if (trait.length === 2) {
+      const dernier = versEcran(trait[1]);
+      ctx.lineTo(dernier.x, dernier.y);
+    } else {
+      for (let k = 1; k < trait.length - 1; k++) {
+        const controle = versEcran(trait[k]);
+        const suivant = versEcran(trait[k + 1]);
+        const milieu = {
+          x: (controle.x + suivant.x) / 2,
+          y: (controle.y + suivant.y) / 2
+        };
+        ctx.quadraticCurveTo(controle.x, controle.y, milieu.x, milieu.y);
+      }
+      const dernier = versEcran(trait[trait.length - 1]);
+      ctx.lineTo(dernier.x, dernier.y);
+    }
     ctx.stroke();
   });
 
