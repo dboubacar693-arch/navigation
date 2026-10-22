@@ -3,382 +3,278 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Navigation dans le bâtiment</title>
+<title>Étape 2 – Les QR codes lancent et arrêtent le trait</title>
 <style>
-  :root {
-    --bg: #f4f5f7;
-    --carte: #ffffff;
-    --texte: #1a1a1a;
-    --doux: #6b7280;
-    --bordure: #d9dce1;
-    --accent: #2563eb;
-    --ok: #16a34a;
-    --erreur: #e11d48;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111318;
-      --carte: #1b1e25;
-      --texte: #f1f2f4;
-      --doux: #9aa1ad;
-      --bordure: #2c303a;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--texte);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-size: 17px;
-    line-height: 1.4;
-    padding: 16px 16px 40px;
-  }
-  main { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; margin: 4px 0 16px; }
-  h2 { font-size: 1.05rem; margin: 0; }
-
-  /* Les cartes (une par étape) */
-  .carte {
-    background: var(--carte);
-    border: 1px solid var(--bordure);
-    border-radius: 14px;
-    padding: 14px;
-    margin-bottom: 12px;
-  }
-  .carte.inactive { opacity: 0.45; }
-  .entete { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .num {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: var(--accent); color: #fff;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 0.95rem; flex-shrink: 0;
-  }
-
-  /* Liste déroulante et boutons : grands, faciles à toucher */
-  select {
-    width: 100%;
-    min-height: 48px;
-    padding: 10px 12px;
-    font-size: 1rem;
-    border: 1px solid var(--bordure);
-    border-radius: 10px;
-    background: var(--bg);
-    color: var(--texte);
-  }
-  button {
-    min-height: 48px;
-    padding: 10px 16px;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 10px;
-    border: 1px solid var(--bordure);
-    background: var(--bg);
-    color: var(--texte);
-    cursor: pointer;
-  }
-  button.primaire {
-    width: 100%;
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-  }
-  button.secondaire { width: 100%; margin-top: 8px; }
-
-  /* Bandeau de message */
-  #message {
-    padding: 12px 14px;
-    border-radius: 12px;
-    margin-bottom: 12px;
-    background: var(--carte);
-    border: 1px solid var(--bordure);
-    border-left: 6px solid var(--accent);
-  }
-  #message[data-type="ok"]     { border-left-color: var(--ok); }
-  #message[data-type="erreur"] { border-left-color: var(--erreur); }
-
-  /* Zone de scan */
-  #zoneScan { display: none; margin-top: 10px; }
-  #video { width: 100%; border-radius: 12px; background: #000; display: block; }
-  #destinationTexte { margin: 0 0 10px; color: var(--doux); }
-
-  /* Le plan */
-  canvas#plan {
-    width: 100%;
-    height: auto;
-    display: block;
-    border-radius: 10px;
-    background: #fff;
-  }
-
-  details { margin-top: 20px; color: var(--doux); font-size: 0.9rem; }
-  details select { margin-top: 8px; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; max-width: 640px; }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  .boutons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  button { min-height: 46px; padding: 8px 14px; font-size: 1rem; border: 1px solid #888; border-radius: 8px; background: #fff; }
+  button:disabled { opacity: 0.4; }
+  #btnScan { width: 100%; background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+  #message { padding: 10px 12px; border-left: 6px solid #2563eb; background: #eef2ff; border-radius: 8px; margin-bottom: 12px; }
+  #zoneScan { display: none; margin-bottom: 12px; }
+  #video { width: 100%; border-radius: 10px; background: #000; display: block; margin-bottom: 8px; }
+  canvas#dessin { width: 100%; height: auto; border: 1px solid #aaa; display: block; }
+  #infos { margin: 10px 0; font-size: 0.95rem; line-height: 1.5; }
+  details { margin-top: 16px; padding: 10px; background: #f0f0f0; border-radius: 8px; font-size: 0.9rem; }
+  details .boutons { margin-top: 10px; }
 </style>
 </head>
 <body>
-<main>
 
-<h1 id="titre">Navigation</h1>
+<h1>Dessiner un trait avec deux QR codes</h1>
 
-<!-- Messages pour l'utilisateur -->
-<div id="message" data-type="info"></div>
+<div id="message">Scannez le QR code « début » pour commencer un trait.</div>
 
-<!-- ÉTAPE 1 -->
-<section class="carte" id="etape1">
-  <div class="entete"><span class="num">1</span><h2>Où êtes-vous ?</h2></div>
-  <select id="choixPosition"></select>
-</section>
+<button id="btnScan">📷 Scanner un QR code</button>
 
-<!-- ÉTAPE 2 -->
-<section class="carte inactive" id="etape2">
-  <div class="entete"><span class="num">2</span><h2>Où allez-vous ?</h2></div>
-  <p id="destinationTexte"></p>
-  <button class="primaire" id="btnScan">Scanner le QR code</button>
-  <div id="zoneScan">
-    <video id="video" playsinline muted></video>
-    <button class="secondaire" id="btnAnnulerScan">Annuler</button>
-  </div>
-</section>
+<div id="zoneScan">
+  <video id="video" playsinline muted></video>
+  <button id="btnAnnulerScan">Annuler</button>
+</div>
 
-<!-- LE PLAN -->
-<section class="carte">
-  <canvas id="plan" width="600" height="400"></canvas>
-</section>
+<div class="boutons" style="margin-top:12px">
+  <button id="effacerDernier">Effacer le dernier trait</button>
+  <button id="toutEffacer">Tout effacer</button>
+</div>
 
+<canvas id="dessin" width="600" height="600"></canvas>
+<div id="infos"></div>
+
+<!-- Les anciens boutons, gardés pour tester sans QR code -->
 <details>
-  <summary>Mode test (ordinateur, sans QR code)</summary>
-  <select id="choixTest"></select>
+  <summary>Mode test (sans QR code)</summary>
+  <div class="boutons">
+    <button id="demarrer">▶ Démarrer un trait</button>
+    <button id="arreter" disabled>■ Arrêter le trait</button>
+    <button id="btnPas">Faire un pas de 3 m</button>
+  </div>
 </details>
 
-</main>
-
-<!-- Bibliothèque de lecture de QR code -->
+<!-- Bibliothèque qui sait lire un QR code dans une image -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 
 <script>
-// =====================================================================
-// ⚙️  CONFIG : LA SEULE PARTIE À MODIFIER POUR CHANGER DE PLAN
-// =====================================================================
-const CONFIG = {
+// =====================================================
+// A. LA MÉMOIRE DU PROGRAMME
+// =====================================================
+const traits = [];        // les traits terminés
+let traitEnCours = null;  // le trait qu'on dessine (null si aucun)
+let idSuivi = null;       // numéro de l'écouteur GPS
+let derniere = null;      // dernière position connue
 
-  // Le titre affiché en haut de la page
-  titre: "Navigation – École",
-
-  // L'image du plan, dans le même dossier que ce fichier.
-  //   null          → on utilise le plan d'exemple dessiné par le code
-  //   "plan.png"    → on utilise ton image
-  // Les coordonnées x et y ci-dessous sont en pixels de CETTE image.
-  image: null,
-
-  // Les points : salles ET intersections de couloir.
-  // Pour trouver x et y : ajoute ?debug dans l'adresse et clique sur le plan.
-  points: {
-    entree:    { nom: "Entrée",      x: 313, y: 380 },
-    couloir:   { nom: "Couloir",     x: 307, y: 212 },
-    couloirAD: { nom: "Couloir A-D", x: 155, y: 188 },
-    couloirCE: { nom: "Couloir C-E", x: 453, y: 209 },
-    salleA:    { nom: "Salle A",     x: 124, y: 144 },
-    salleB:    { nom: "Salle B",     x: 322, y: 133 },
-    salleC:    { nom: "Salle C",     x: 499, y: 132 },
-    salleD:    { nom: "Salle D",     x: 120, y: 250 },
-    salleE:    { nom: "Salle E",     x: 490, y: 250 }
-  },
-
-  // Les liens : "on peut aller directement de ce point à celui-là".
-  // Ils empêchent la ligne de traverser les murs.
-  liens: [
-    ["entree", "couloir"],
-    ["couloir", "couloirAD"],
-    ["couloir", "couloirCE"],
-    ["couloir", "salleB"],
-    ["couloirAD", "salleA"],
-    ["couloirAD", "salleD"],
-    ["couloirCE", "salleC"],
-    ["couloirCE", "salleE"]
-  ],
-
-  // Les lieux proposés comme position de départ et comme destination
-  // (les intersections n'en font pas partie).
-  lieux: ["entree", "salleA", "salleB", "salleC", "salleD", "salleE"]
-};
-// =====================================================================
-// FIN DE LA CONFIG : en dessous, rien à changer pour un nouveau plan
-// =====================================================================
+const COULEURS = ["#2563eb", "#e11d48", "#16a34a", "#f59e0b", "#7c3aed", "#0891b2"];
+const DISTANCE_MIN = 2;   // mètres
 
 
-const points = CONFIG.points;
-const params = new URLSearchParams(window.location.search);
-const debug = params.has("debug");
-
-document.getElementById("titre").textContent = CONFIG.titre;
-document.title = CONFIG.titre;
-
-
-// ---------------------------------------------------------------------
-// A. Trouver le chemin
-// ---------------------------------------------------------------------
-const voisins = {};
-for (const id in points) voisins[id] = [];
-for (const [a, b] of CONFIG.liens) {
-  if (!points[a] || !points[b]) {
-    console.warn("Lien ignoré, point inconnu :", a, b);
-    continue;
-  }
-  voisins[a].push(b);
-  voisins[b].push(a);
-}
-
-function trouverChemin(depart, arrivee) {
-  const venantDe = {};
-  venantDe[depart] = null;
-  const file = [depart];
-
-  while (file.length > 0) {
-    const courant = file.shift();
-    if (courant === arrivee) break;
-    for (const v of voisins[courant]) {
-      if (!(v in venantDe)) {
-        venantDe[v] = courant;
-        file.push(v);
-      }
-    }
-  }
-
-  if (!(arrivee in venantDe)) return null;
-
-  const chemin = [];
-  let id = arrivee;
-  while (id !== null) {
-    chemin.unshift(id);
-    id = venantDe[id];
-  }
-  return chemin;
+// =====================================================
+// B. GPS → MÈTRES
+// =====================================================
+function enMetres(p, ref) {
+  const M = 111320;
+  return {
+    x: (p.lng - ref.lng) * M * Math.cos(ref.lat * Math.PI / 180),
+    y: (ref.lat - p.lat) * M
+  };
 }
 
 
-// ---------------------------------------------------------------------
-// B. Dessiner
-// ---------------------------------------------------------------------
-const canvas = document.getElementById("plan");
+// =====================================================
+// C. DESSINER
+// =====================================================
+const canvas = document.getElementById("dessin");
 const ctx = canvas.getContext("2d");
-const imagePlan = new Image();
 
-// Un plan plus grand a besoin de traits et de textes plus grands :
-// "u" s'adapte à la taille du canvas (1 pour le plan d'exemple).
-function u() { return canvas.width / 600; }
-
-function dessinerPlanExemple() {
+function dessiner() {
+  const L = canvas.width, H = canvas.height, marge = 30;
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, 600, 400);
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(20, 20, 560, 360);
-  ctx.strokeRect(20, 20, 200, 140);
-  ctx.strokeRect(220, 20, 180, 140);
-  ctx.strokeRect(400, 20, 180, 140);
-  ctx.strokeRect(20, 240, 200, 140);
-  ctx.strokeRect(400, 240, 180, 140);
-  ctx.fillStyle = "#999";
-  ctx.font = "16px sans-serif";
-  ctx.fillText("Salle A", 90, 95);
-  ctx.fillText("Salle B", 280, 95);
-  ctx.fillText("Salle C", 470, 95);
-  ctx.fillText("Salle D", 90, 315);
-  ctx.fillText("Salle E", 470, 315);
-}
+  ctx.fillRect(0, 0, L, H);
 
-function dessinerPlan() {
-  if (CONFIG.image) {
-    ctx.drawImage(imagePlan, 0, 0);
-  } else {
-    dessinerPlanExemple();
+  const lesTraits = traitEnCours ? traits.concat([traitEnCours]) : traits;
+  const tous = lesTraits.flat();
+  if (derniere) tous.push(derniere);
+
+  if (tous.length === 0) {
+    ctx.fillStyle = "#999";
+    ctx.font = "18px sans-serif";
+    ctx.fillText("Aucun trait pour l’instant", 180, H / 2);
+    return;
   }
-}
 
-function dessinerLigne(chemin) {
-  ctx.strokeStyle = "#2563eb";
-  ctx.lineWidth = 6 * u();
+  const ref = tous[0];
+  const m = tous.map(p => enMetres(p, ref));
+  const minX = Math.min(...m.map(p => p.x)), maxX = Math.max(...m.map(p => p.x));
+  const minY = Math.min(...m.map(p => p.y)), maxY = Math.max(...m.map(p => p.y));
+  const largeur = Math.max(maxX - minX, 10);
+  const hauteur = Math.max(maxY - minY, 10);
+
+  const echelle = Math.min((L - 2 * marge) / largeur, (H - 2 * marge) / hauteur);
+  const decalX = (L - 2 * marge - largeur * echelle) / 2;
+  const decalY = (H - 2 * marge - hauteur * echelle) / 2;
+
+  function versEcran(p) {
+    const q = enMetres(p, ref);
+    return {
+      x: marge + decalX + (q.x - minX) * echelle,
+      y: marge + decalY + (q.y - minY) * echelle
+    };
+  }
+
+  ctx.lineWidth = 5;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(points[chemin[0]].x, points[chemin[0]].y);
-  for (let i = 1; i < chemin.length; i++) {
-    ctx.lineTo(points[chemin[i]].x, points[chemin[i]].y);
-  }
-  ctx.stroke();
-}
-
-// Un rond de couleur avec un halo, et un texte lisible (contour blanc)
-function dessinerPastille(id, couleur, texte) {
-  const p = points[id];
-  const k = u();
-
-  ctx.fillStyle = couleur + "40";   // couleur transparente pour le halo
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 17 * k, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = couleur;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 9 * k, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2 * k;
-  ctx.stroke();
-
-  ctx.font = "bold " + (15 * k) + "px sans-serif";
-  ctx.lineWidth = 4 * k;
-  ctx.strokeStyle = "#fff";
-  ctx.strokeText(texte, p.x + 16 * k, p.y - 14 * k);
-  ctx.fillStyle = couleur;
-  ctx.fillText(texte, p.x + 16 * k, p.y - 14 * k);
-}
-
-// Mode debug : montre tous les points et liens
-function dessinerGrapheDebug() {
-  const k = u();
-  ctx.strokeStyle = "rgba(37, 99, 235, 0.5)";
-  ctx.lineWidth = 2 * k;
-  for (const [a, b] of CONFIG.liens) {
-    if (!points[a] || !points[b]) continue;
+  lesTraits.forEach((trait, i) => {
+    const couleur = COULEURS[i % COULEURS.length];
+    ctx.strokeStyle = couleur;
+    ctx.fillStyle = couleur;
+    if (trait.length === 1) {
+      const a = versEcran(trait[0]);
+      ctx.beginPath(); ctx.arc(a.x, a.y, 5, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
     ctx.beginPath();
-    ctx.moveTo(points[a].x, points[a].y);
-    ctx.lineTo(points[b].x, points[b].y);
+    trait.forEach((p, k) => {
+      const a = versEcran(p);
+      if (k === 0) ctx.moveTo(a.x, a.y); else ctx.lineTo(a.x, a.y);
+    });
     ctx.stroke();
+  });
+
+  if (derniere) {
+    const a = versEcran(derniere);
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.beginPath(); ctx.arc(a.x, a.y, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.arc(a.x, a.y, 7, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.font = (12 * k) + "px sans-serif";
-  for (const id in points) {
-    ctx.fillStyle = "#2563eb";
-    ctx.beginPath();
-    ctx.arc(points[id].x, points[id].y, 4 * k, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillText(id, points[id].x + 7 * k, points[id].y - 6 * k);
-  }
+
+  ctx.fillStyle = "#666";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Zone affichée : " + Math.round(largeur) + " m × " + Math.round(hauteur) + " m", 10, H - 8);
 }
 
 
-// ---------------------------------------------------------------------
-// C. Scanner de QR code
-// ---------------------------------------------------------------------
+// =====================================================
+// D. MESSAGES ET INFOS
+// =====================================================
+const messageEl = document.getElementById("message");
+const infos = document.getElementById("infos");
+
+function dire(texte) { messageEl.textContent = texte; }
+
+function majInfos() {
+  let texte = "";
+  if (derniere) {
+    texte += "Position : " + derniere.lat.toFixed(6) + ", " + derniere.lng.toFixed(6);
+    texte += " (précision ± " + Math.round(derniere.precision) + " m)<br>";
+  }
+  texte += traitEnCours ? "🔴 Trait en cours : " + traitEnCours.length + " points<br>" : "";
+  texte += "Traits conservés : " + traits.length;
+  infos.innerHTML = texte;
+}
+
+
+// =====================================================
+// E. RECEVOIR LES POSITIONS (GPS)
+// =====================================================
+function nouvellePosition(lat, lng, precision) {
+  derniere = { lat: lat, lng: lng, precision: precision };
+
+  if (traitEnCours) {
+    const dernierPoint = traitEnCours[traitEnCours.length - 1];
+    let assezLoin = true;
+    if (dernierPoint) {
+      const d = enMetres(derniere, dernierPoint);
+      assezLoin = Math.hypot(d.x, d.y) >= DISTANCE_MIN;
+    }
+    if (assezLoin) traitEnCours.push({ lat: lat, lng: lng });
+  }
+  majInfos();
+  dessiner();
+}
+
+function quandGps(pos) {
+  nouvellePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+}
+function quandErreurGps(err) {
+  dire("GPS indisponible : " + err.message + " (autorisez la localisation pour ce site)");
+}
+
+
+// =====================================================
+// F. DÉMARRER / ARRÊTER UN TRAIT
+// =====================================================
+const btnDemarrer = document.getElementById("demarrer");
+const btnArreter = document.getElementById("arreter");
+
+function demarrerTrait() {
+  if (traitEnCours) {
+    dire("Un trait est déjà en cours. Scannez le QR code « fin » pour l’arrêter.");
+    return;
+  }
+  if (!navigator.geolocation) {
+    dire("Ce navigateur ne gère pas la géolocalisation.");
+    return;
+  }
+  traitEnCours = [];
+  idSuivi = navigator.geolocation.watchPosition(quandGps, quandErreurGps, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000
+  });
+  btnDemarrer.disabled = true;
+  btnArreter.disabled = false;
+  dire("Trait en cours… Déplacez-vous, puis scannez le QR code « fin ».");
+  majInfos();
+  dessiner();
+}
+
+function arreterTrait() {
+  if (!traitEnCours) {
+    dire("Aucun trait en cours. Scannez d’abord le QR code « début ».");
+    return;
+  }
+  if (idSuivi !== null) navigator.geolocation.clearWatch(idSuivi);
+  idSuivi = null;
+  if (traitEnCours.length > 0) traits.push(traitEnCours);
+  traitEnCours = null;
+  btnDemarrer.disabled = false;
+  btnArreter.disabled = true;
+  dire("Trait terminé et conservé. Scannez « début » pour en faire un autre.");
+  majInfos();
+  dessiner();
+}
+
+btnDemarrer.addEventListener("click", demarrerTrait);
+btnArreter.addEventListener("click", arreterTrait);
+
+
+// =====================================================
+// G. LE SCANNER DE QR CODE (nouveau)
+// =====================================================
 const video = document.getElementById("video");
 const zoneScan = document.getElementById("zoneScan");
 const btnScan = document.getElementById("btnScan");
-const canvasScan = document.createElement("canvas");
+const canvasScan = document.createElement("canvas");   // canvas invisible pour analyser les images
 const ctxScan = canvasScan.getContext("2d", { willReadFrequently: true });
 
 let flux = null;
 let scanEnCours = false;
 
-// Le QR contient ".../?arrivee=salleC" : on en extrait "salleC"
-function extraireDestination(texte) {
-  let id = null;
+// Ce que contient un QR code → l'action à faire.
+// Les deux QR codes contiennent simplement le texte "debut" et le texte "fin".
+function lireAction(texte) {
+  let valeur = texte;
   try {
-    id = new URL(texte).searchParams.get("arrivee");
-  } catch (e) {
-    id = texte;
-  }
-  return (id && points[id]) ? id : null;
+    // au cas où le QR contient une adresse du type ...?action=debut
+    const a = new URL(texte).searchParams.get("action");
+    if (a) valeur = a;
+  } catch (e) { /* ce n'est pas une adresse, on garde le texte tel quel */ }
+
+  valeur = valeur.trim().toLowerCase();
+  if (valeur === "debut" || valeur === "début") return "debut";
+  if (valeur === "fin") return "fin";
+  return null;
 }
 
 async function demarrerScan() {
@@ -388,7 +284,7 @@ async function demarrerScan() {
       video: { facingMode: "environment" }
     });
   } catch (e) {
-    dire("Caméra indisponible ou refusée. Autorisez-la dans les réglages, ou scannez avec l’appareil photo du téléphone.", "erreur");
+    dire("Caméra indisponible ou refusée. Autorisez-la dans les réglages du navigateur.");
     return;
   }
   video.srcObject = flux;
@@ -396,7 +292,7 @@ async function demarrerScan() {
   zoneScan.style.display = "block";
   btnScan.style.display = "none";
   scanEnCours = true;
-  dire("Visez le QR code de votre destination.", "info");
+  dire("Visez un QR code…");
   boucleScan();
 }
 
@@ -408,6 +304,7 @@ function arreterScan() {
   btnScan.style.display = "block";
 }
 
+// Se répète : prend une image de la vidéo et cherche un QR code dedans
 function boucleScan() {
   if (!scanEnCours) return;
 
@@ -419,147 +316,59 @@ function boucleScan() {
     const resultat = jsQR(image.data, image.width, image.height);
 
     if (resultat) {
-      const id = extraireDestination(resultat.data);
-      if (id) {
-        destination = id;
-        arreterScan();
-        afficher();
+      const action = lireAction(resultat.data);
+      if (action) {
+        arreterScan();                       // on éteint la caméra
+        if (action === "debut") demarrerTrait();   // QR n°1
+        if (action === "fin") arreterTrait();      // QR n°2
         return;
       }
-      dire("Ce QR code n’est pas reconnu, essayez-en un autre.", "erreur");
+      dire("QR code non reconnu. Cherchez « début » ou « fin ».");
     }
   }
   requestAnimationFrame(boucleScan);
 }
 
-
-// ---------------------------------------------------------------------
-// D. Tout relier
-// ---------------------------------------------------------------------
-const choixPosition = document.getElementById("choixPosition");
-const choixTest = document.getElementById("choixTest");
-const messageEl = document.getElementById("message");
-const etape2 = document.getElementById("etape2");
-const destinationTexte = document.getElementById("destinationTexte");
-
-function dire(texte, type) {
-  messageEl.textContent = texte;
-  messageEl.dataset.type = type || "info";
-}
-
-// La destination peut venir de l'adresse (scan avec l'appareil photo du téléphone)
-let destination = params.get("arrivee");
-if (destination && !points[destination]) destination = null;
-
-function afficher() {
-  dessinerPlan();
-  if (debug) dessinerGrapheDebug();
-
-  const position = choixPosition.value;
-  etape2.classList.toggle("inactive", !position);
-
-  // Texte de l'étape 2
-  if (destination) {
-    destinationTexte.textContent = "Destination : " + points[destination].nom;
-    btnScan.textContent = "Changer de destination";
-  } else {
-    destinationTexte.textContent = "Scannez le QR code de la salle où vous voulez aller.";
-    btnScan.textContent = "Scanner le QR code";
-  }
-
-  if (!position) {
-    dire("Commencez par choisir l’endroit où vous êtes.", "info");
-    return;
-  }
-  dessinerPastille(position, "#e11d48", "Vous êtes ici");
-
-  if (!destination) {
-    if (!scanEnCours) dire("Scannez le QR code de votre destination.", "info");
-    return;
-  }
-  if (destination === position) {
-    dire("Vous êtes déjà arrivé !", "ok");
-    return;
-  }
-
-  const chemin = trouverChemin(position, destination);
-  if (!chemin) {
-    dire("Aucun chemin trouvé entre ces deux endroits.", "erreur");
-    return;
-  }
-  dessinerLigne(chemin);
-  dessinerPastille(position, "#e11d48", "Vous êtes ici");
-  dessinerPastille(destination, "#16a34a", points[destination].nom);
-  dire("Suivez la ligne bleue jusqu’à : " + points[destination].nom, "ok");
-}
-
-// Remplir les listes
-choixPosition.innerHTML = '<option value="">Choisir…</option>';
-choixTest.innerHTML = '<option value="">(aucune)</option>';
-for (const id of CONFIG.lieux) {
-  if (!points[id]) continue;
-  choixPosition.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
-  choixTest.innerHTML += `<option value="${id}">${points[id].nom}</option>`;
-}
-if (destination) choixTest.value = destination;
-
-// Quand on choisit sa position : on affiche, et on ouvre la caméra si besoin
-choixPosition.addEventListener("change", () => {
-  afficher();
-  if (choixPosition.value && !destination && !scanEnCours) demarrerScan();
-});
-
-// Bouton "Scanner" / "Changer de destination"
-btnScan.addEventListener("click", () => {
-  if (!choixPosition.value) {
-    dire("Choisissez d’abord où vous êtes.", "erreur");
-    return;
-  }
-  destination = null;
-  choixTest.value = "";
-  afficher();
-  demarrerScan();
-});
-
+btnScan.addEventListener("click", demarrerScan);
 document.getElementById("btnAnnulerScan").addEventListener("click", () => {
   arreterScan();
-  afficher();
+  dire("Scan annulé.");
 });
 
-choixTest.addEventListener("change", () => {
-  arreterScan();
-  destination = choixTest.value || null;
-  afficher();
+
+// =====================================================
+// H. EFFACER
+// =====================================================
+document.getElementById("effacerDernier").addEventListener("click", () => {
+  traits.pop();
+  majInfos();
+  dessiner();
+});
+document.getElementById("toutEffacer").addEventListener("click", () => {
+  traits.length = 0;
+  majInfos();
+  dessiner();
 });
 
-// Mode debug : un clic sur le plan affiche ses coordonnées
-canvas.addEventListener("click", e => {
-  if (!debug) return;
-  const r = canvas.getBoundingClientRect();
-  const x = Math.round((e.clientX - r.left) * canvas.width / r.width);
-  const y = Math.round((e.clientY - r.top) * canvas.height / r.height);
-  dire("Coordonnées : x: " + x + ", y: " + y, "info");
-});
 
-// Chargement du plan (image ou exemple), puis premier affichage
-function demarrer() {
-  if (!CONFIG.image) {
-    canvas.width = 600;
-    canvas.height = 400;
-    afficher();
+// =====================================================
+// I. MODE TEST : simuler un déplacement
+// =====================================================
+let cap = 0;
+document.getElementById("btnPas").addEventListener("click", () => {
+  if (!traitEnCours) {
+    dire("Démarrez d’abord un trait.");
     return;
   }
-  imagePlan.onload = () => {
-    canvas.width = imagePlan.naturalWidth;
-    canvas.height = imagePlan.naturalHeight;
-    afficher();
-  };
-  imagePlan.onerror = () => {
-    dire("Image du plan introuvable : " + CONFIG.image, "erreur");
-  };
-  imagePlan.src = CONFIG.image;
-}
-demarrer();
+  const base = derniere || { lat: 48.8566, lng: 2.3522 };
+  cap += (Math.random() - 0.5) * 0.9;
+  const lat = base.lat + Math.cos(cap) * 3 / 111320;
+  const lng = base.lng + Math.sin(cap) * 3 / (111320 * Math.cos(base.lat * Math.PI / 180));
+  nouvellePosition(lat, lng, 3);
+});
+
+majInfos();
+dessiner();
 </script>
 </body>
 </html>
