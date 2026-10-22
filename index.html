@@ -51,8 +51,9 @@
   </div>
 </details>
 
-<!-- Bibliothèque qui sait lire un QR code dans une image -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<!-- La bibliothèque jsQR (lecture des QR codes) est chargée par le code, plus bas,
+     avec plusieurs sources de secours. -->
+
 
 <script>
 // =====================================================
@@ -264,24 +265,76 @@ let scanEnCours = false;
 // Ce que contient un QR code → l'action à faire.
 // Les deux QR codes contiennent simplement le texte "debut" et le texte "fin".
 function lireAction(texte) {
-  let valeur = texte;
+  let valeur = texte.trim().toLowerCase();
   try {
     // au cas où le QR contient une adresse du type ...?action=debut
     const a = new URL(texte).searchParams.get("action");
-    if (a) valeur = a;
+    if (a) valeur = a.trim().toLowerCase();
   } catch (e) { /* ce n'est pas une adresse, on garde le texte tel quel */ }
 
-  valeur = valeur.trim().toLowerCase();
   if (valeur === "debut" || valeur === "début") return "debut";
   if (valeur === "fin") return "fin";
+  // Dernier recours : "action=debut" ou "action=fin" apparaît dans le texte
+  if (/action=d[eé]but/.test(valeur)) return "debut";
+  if (/action=fin/.test(valeur)) return "fin";
   return null;
 }
 
+// Charger jsQR : d'abord un fichier local (jsQR.js, à côté de cette page),
+// puis deux sites de secours. On s'arrête dès qu'une source fonctionne.
+const SOURCES_JSQR = [
+  "jsQR.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js",
+  "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"
+];
+
+function chargerScript(url) {
+  return new Promise(resolve => {
+    const s = document.createElement("script");
+    s.src = url;
+    s.onload = () => resolve(typeof jsQR !== "undefined");
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function chargerJsQR() {
+  if (typeof jsQR !== "undefined") return true;
+  for (const url of SOURCES_JSQR) {
+    if (await chargerScript(url)) return true;
+  }
+  return false;
+}
+
+// Détecteur de QR codes intégré au navigateur (rapide et précis), s'il existe
+// (Chrome sur Android, par exemple). Sinon, on utilise jsQR.
+let detecteurNatif = null;
+if ("BarcodeDetector" in window) {
+  try { detecteurNatif = new BarcodeDetector({ formats: ["qr_code"] }); }
+  catch (e) { detecteurNatif = null; }
+}
+
+let nbImages = 0;          // combien d'images ont été analysées
+let texteScan = "";        // le message affiché pendant le scan
+let minuteurAide = null;
+
 async function demarrerScan() {
   if (scanEnCours) return;
+  dire("Préparation du scanner…");
+  const jsqrOk = await chargerJsQR();
+  if (!jsqrOk && !detecteurNatif) {
+    dire("Impossible de charger la bibliothèque de lecture des QR codes (réseau ou bloqueur de publicités ?). Ajoutez le fichier jsQR.js à côté de la page, ou essayez avec les données mobiles.");
+    return;
+  }
   try {
+    // On demande une image plus nette (1280×720) : les QR codes
+    // qui contiennent une adresse longue sont denses et difficiles à lire en basse résolution.
     flux = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
     });
   } catch (e) {
     dire("Caméra indisponible ou refusée. Autorisez-la dans les réglages du navigateur.");
@@ -292,38 +345,73 @@ async function demarrerScan() {
   zoneScan.style.display = "block";
   btnScan.style.display = "none";
   scanEnCours = true;
-  dire("Visez un QR code…");
+  nbImages = 0;
+  texteScan = "Recherche d’un QR code…";
+  dire(texteScan);
+
+  // Si rien n'est détecté au bout de 8 secondes, on donne des conseils
+  minuteurAide = setTimeout(() => {
+    if (scanEnCours) {
+      texteScan = "Toujours rien. Approchez le QR code (15 à 25 cm), tenez-le bien droit, bien éclairé, sans reflet.";
+      dire(texteScan + " (" + nbImages + " images analysées)");
+    }
+  }, 8000);
+
   boucleScan();
 }
 
 function arreterScan() {
   scanEnCours = false;
+  clearTimeout(minuteurAide);
   if (flux) flux.getTracks().forEach(t => t.stop());
   flux = null;
   zoneScan.style.display = "none";
   btnScan.style.display = "block";
 }
 
-// Se répète : prend une image de la vidéo et cherche un QR code dedans
-function boucleScan() {
-  if (!scanEnCours) return;
-
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+// Analyse l'image actuelle de la vidéo : renvoie le texte du QR code, ou null
+async function lireImage() {
+  // 1. Le détecteur du navigateur, s'il existe
+  if (detecteurNatif) {
+    try {
+      const r = await detecteurNatif.detect(video);
+      if (r.length > 0) return r[0].rawValue;
+    } catch (e) { /* on essaie avec jsQR */ }
+  }
+  // 2. jsQR
+  if (typeof jsQR !== "undefined") {
     canvasScan.width = video.videoWidth;
     canvasScan.height = video.videoHeight;
     ctxScan.drawImage(video, 0, 0);
     const image = ctxScan.getImageData(0, 0, canvasScan.width, canvasScan.height);
-    const resultat = jsQR(image.data, image.width, image.height);
+    const resultat = jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" });
+    if (resultat) return resultat.data;
+  }
+  return null;
+}
 
-    if (resultat) {
-      const action = lireAction(resultat.data);
+// Se répète tant qu'on scanne
+async function boucleScan() {
+  if (!scanEnCours) return;
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    const texte = await lireImage();
+    if (!scanEnCours) return;          // annulé pendant l'analyse
+    nbImages++;
+
+    if (texte) {
+      const action = lireAction(texte);
       if (action) {
-        arreterScan();                       // on éteint la caméra
-        if (action === "debut") demarrerTrait();   // QR n°1
-        if (action === "fin") arreterTrait();      // QR n°2
+        arreterScan();                           // on éteint la caméra
+        if (action === "debut") demarrerTrait(); // QR n°1
+        if (action === "fin") arreterTrait();    // QR n°2
         return;
       }
-      dire("QR code non reconnu. Cherchez « début » ou « fin ».");
+      texteScan = "QR code lu mais non reconnu. Contenu : « " + texte + " »";
+      dire(texteScan);
+    } else if (nbImages % 10 === 0) {
+      // petit compteur : prouve que l'analyse tourne bien
+      dire(texteScan + " (" + nbImages + " images analysées)");
     }
   }
   requestAnimationFrame(boucleScan);
