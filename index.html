@@ -264,21 +264,27 @@ let scanEnCours = false;
 // Ce que contient un QR code → l'action à faire.
 // Les deux QR codes contiennent simplement le texte "debut" et le texte "fin".
 function lireAction(texte) {
-  let valeur = texte;
+  let valeur = texte.trim().toLowerCase();
   try {
     // au cas où le QR contient une adresse du type ...?action=debut
     const a = new URL(texte).searchParams.get("action");
-    if (a) valeur = a;
+    if (a) valeur = a.trim().toLowerCase();
   } catch (e) { /* ce n'est pas une adresse, on garde le texte tel quel */ }
 
-  valeur = valeur.trim().toLowerCase();
   if (valeur === "debut" || valeur === "début") return "debut";
   if (valeur === "fin") return "fin";
+  // Dernier recours : "action=debut" ou "action=fin" apparaît dans le texte
+  if (/action=d[eé]but/.test(valeur)) return "debut";
+  if (/action=fin/.test(valeur)) return "fin";
   return null;
 }
 
 async function demarrerScan() {
   if (scanEnCours) return;
+  if (typeof jsQR === "undefined") {
+    dire("La bibliothèque de lecture des QR codes ne s’est pas chargée. Vérifiez la connexion internet et rechargez la page.");
+    return;
+  }
   try {
     flux = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" }
@@ -323,7 +329,7 @@ function boucleScan() {
         if (action === "fin") arreterTrait();      // QR n°2
         return;
       }
-      dire("QR code non reconnu. Cherchez « début » ou « fin ».");
+      dire("QR code lu mais non reconnu. Contenu : « " + resultat.data + " »");
     }
   }
   requestAnimationFrame(boucleScan);
