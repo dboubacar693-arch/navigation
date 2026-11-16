@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trace en intérieur avec QR codes</title>
+<title>Trace : départ GPS, mouvement par capteurs</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; max-width: 640px; }
   h1 { font-size: 1.3rem; margin: 0 0 12px; }
@@ -23,7 +23,7 @@
 
 <h1>Dessiner un trait avec deux QR codes</h1>
 
-<div id="message">Scannez le QR code « début », puis marchez en tenant le téléphone à plat.</div>
+<div id="message">Scannez le QR code « début », puis marchez en tenant le téléphone à plat, le haut du téléphone vers l’avant.</div>
 
 <button id="btnScan">📷 Scanner un QR code</button>
 
@@ -58,26 +58,38 @@
 // =====================================================
 // A. LES RÉGLAGES (à modifier pour ajuster)
 // =====================================================
-const ZONE = 20;            // largeur affichée, en mètres
-const LONGUEUR_PAS = 0.7;   // longueur d'un pas, en mètres
-const SEUIL_PAS = 1.5;      // sensibilité des pas (plus petit = plus sensible)
-const DELAI_PAS = 350;      // temps minimum entre deux pas (millisecondes)
+const ZONE = 20;              // largeur affichée, en mètres
+const LONGUEUR_PAS = 0.7;     // longueur d'un pas, en mètres
+const SEUIL_PAS = 1.5;        // sensibilité des pas (plus petit = plus sensible)
+const DELAI_PAS = 350;        // temps minimum entre deux pas (millisecondes)
+const PRECISION_GPS_MAX = 30; // on ignore un point de départ GPS plus imprécis que ça (mètres)
 const COULEURS = ["#2563eb", "#e11d48", "#16a34a", "#f59e0b", "#7c3aed", "#0891b2"];
 
 
 // =====================================================
 // B. LA MÉMOIRE DU PROGRAMME
 // =====================================================
-const traits = [];                // les traits terminés
-let traitEnCours = null;          // le trait qu'on dessine (null si aucun)
-let position = { x: 0, y: 0 };    // position en mètres depuis le départ
-let cap = 0;                      // direction en degrés (0 = nord, 90 = est)
+const traits = [];                  // les traits terminés
+let traitEnCours = null;            // le trait qu'on dessine (null si aucun)
+let position = { x: 0, y: 0 };      // position actuelle, en mètres
 let nbPas = 0;
-let moyenne = 9.8;                // moyenne de l'accélération (≈ gravité)
-let dernierPas = 0;               // heure du dernier pas
-let auDessus = false;             // l'écart est-il au-dessus du seuil ?
+
+// Direction du HAUT du téléphone (0 = nord, 90 = est)
+let cap = 0;
+let decalageIphone = null;          // correction de la boussole sur iPhone
+let telephoneRedresse = false;      // vrai si le téléphone est trop vertical
+
+// Détection des pas
+let moyenne = 9.8;                  // moyenne de l'accélération (≈ gravité)
+let dernierPas = 0;                 // heure du dernier pas
+let auDessus = false;               // l'écart est-il au-dessus du seuil ?
 let capteursActifs = false;
-let capRecu = false;              // a-t-on reçu des données de boussole ?
+let capRecu = false;                // a-t-on reçu des données de boussole ?
+
+// Départ GPS
+let refGps = null;                  // premier point GPS : l'origine de tout le plan
+let departPrecedent = { x: 0, y: 0 }; // où a commencé le dernier trait (en mètres)
+let etatGps = "";                   // texte affiché sur l'état du GPS
 
 
 // =====================================================
@@ -86,7 +98,7 @@ let capRecu = false;              // a-t-on reçu des données de boussole ?
 const canvas = document.getElementById("dessin");
 const ctx = canvas.getContext("2d");
 
-// Mètres → pixels. Le point de départ est au centre du canvas.
+// Mètres → pixels. L'origine (premier départ GPS) est au centre du canvas.
 function versEcran(p) {
   const echelle = canvas.width / ZONE;   // pixels pour 1 mètre
   return {
@@ -99,7 +111,7 @@ function dessiner() {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // le point de départ (gris)
+  // l'origine du plan (gris)
   const o = versEcran({ x: 0, y: 0 });
   ctx.fillStyle = "#999";
   ctx.beginPath();
@@ -122,10 +134,11 @@ function dessiner() {
     ctx.stroke();
   });
 
-  // la position actuelle (rond noir) et la direction (petit trait)
+  // la position actuelle (rond noir) et la direction du haut du téléphone (flèche)
   if (traitEnCours) {
     const a = versEcran(position);
     const rad = cap * Math.PI / 180;
+    const bout = { x: a.x + Math.sin(rad) * 34, y: a.y - Math.cos(rad) * 34 };
     ctx.fillStyle = "#000";
     ctx.beginPath();
     ctx.arc(a.x, a.y, 8, 0, Math.PI * 2);
@@ -134,8 +147,12 @@ function dessiner() {
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
-    ctx.lineTo(a.x + Math.sin(rad) * 28, a.y - Math.cos(rad) * 28);
+    ctx.lineTo(bout.x, bout.y);
     ctx.stroke();
+    // pointe de la flèche
+    ctx.beginPath();
+    ctx.arc(bout.x, bout.y, 5, 0, Math.PI * 2);
+    ctx.fill();
   }
   majInfos();
 }
@@ -154,17 +171,77 @@ function majInfos() {
   if (traitEnCours) {
     texte += "🔴 Trait en cours · Cap : " + Math.round(cap) + "° · Pas : " + nbPas +
              " · Distance : " + (nbPas * LONGUEUR_PAS).toFixed(1) + " m<br>";
+    if (telephoneRedresse) {
+      texte += "⚠️ Téléphone trop vertical : posez-le plus à plat pour que la direction soit juste.<br>";
+    }
   }
+  if (etatGps) texte += "Départ GPS : " + etatGps + "<br>";
   texte += "Traits conservés : " + traits.length;
   infos.innerHTML = texte;
 }
 
 
 // =====================================================
-// E. LES CAPTEURS : PAS (accéléromètre) ET DIRECTION (boussole)
+// E. LE GPS : SEULEMENT POUR LE POINT DE DÉPART
 // =====================================================
 
-// Faire un pas : on avance de LONGUEUR_PAS mètres dans la direction du cap
+// GPS (degrés) → mètres, par rapport à un point de référence
+function enMetres(p, ref) {
+  const M = 111320;
+  return {
+    x: (p.lng - ref.lng) * M * Math.cos(ref.lat * Math.PI / 180),
+    y: (ref.lat - p.lat) * M
+  };
+}
+
+// Demande UNE position GPS (pas un suivi continu). Appelle rappel(fix) ou rappel(null).
+function demanderGps(rappel) {
+  if (!navigator.geolocation) { rappel(null); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => rappel({
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      precision: pos.coords.accuracy
+    }),
+    err => rappel(null),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+  );
+}
+
+// Quand le GPS répond : on place le départ du trait à la bonne position
+function appliquerDepartGps(fix) {
+  if (!fix) {
+    etatGps = "non obtenu (normal à l’intérieur) : départ placé au même endroit que le précédent";
+    majInfos();
+    return;
+  }
+  if (fix.precision > PRECISION_GPS_MAX) {
+    etatGps = "trop imprécis (± " + Math.round(fix.precision) + " m), ignoré";
+    majInfos();
+    return;
+  }
+
+  if (!refGps) refGps = fix;                      // le tout premier fix = l'origine du plan
+  const nouveau = enMetres(fix, refGps);          // où commence ce trait, par rapport à l'origine
+
+  // On déplace le trait déjà commencé (provisoire) vers sa vraie position de départ
+  const dx = nouveau.x - departPrecedent.x;
+  const dy = nouveau.y - departPrecedent.y;
+  traitEnCours.forEach(p => { p.x += dx; p.y += dy; });
+  position.x += dx;
+  position.y += dy;
+  departPrecedent = { x: nouveau.x, y: nouveau.y };
+
+  etatGps = "ok (± " + Math.round(fix.precision) + " m)";
+  dessiner();
+}
+
+
+// =====================================================
+// F. LES CAPTEURS : PAS (accéléromètre) ET DIRECTION (boussole)
+// =====================================================
+
+// Faire un pas : on avance de LONGUEUR_PAS mètres dans la direction du haut du téléphone
 function faireUnPas() {
   if (!traitEnCours) return;
   const rad = cap * Math.PI / 180;
@@ -197,15 +274,37 @@ function surMouvement(e) {
   auDessus = ecart > SEUIL_PAS;
 }
 
-// Lire la boussole
+function normaliser(angle) {
+  return ((angle % 360) + 360) % 360;
+}
+
+// Calculer la direction du HAUT du téléphone
 function surOrientation(e) {
-  if (typeof e.webkitCompassHeading === "number") {
-    cap = e.webkitCompassHeading;               // iPhone
-    capRecu = true;
-  } else if (e.alpha !== null) {
-    cap = (360 - e.alpha) % 360;                // Android
-    capRecu = true;
+  if (e.alpha === null || e.beta === null) return;
+  capRecu = true;
+
+  // Si le téléphone est presque vertical, son "haut" pointe vers le ciel :
+  // la direction n'a plus de sens. On garde alors l'ancienne valeur.
+  telephoneRedresse = Math.abs(e.beta) > 70;
+  if (telephoneRedresse) {
+    if (traitEnCours) majInfos();
+    return;
   }
+
+  // alpha = rotation du téléphone à plat. Direction du haut = 360 - alpha.
+  let capHaut = normaliser(360 - e.alpha);
+
+  // iPhone : alpha n'est pas calé sur le nord. On le recale avec la boussole
+  // quand le téléphone est bien à plat.
+  if (typeof e.webkitCompassHeading === "number") {
+    if (Math.abs(e.beta) < 30 && Math.abs(e.gamma) < 30) {
+      decalageIphone = e.webkitCompassHeading - capHaut;
+    }
+    capHaut = (decalageIphone === null) ? e.webkitCompassHeading
+                                        : normaliser(capHaut + decalageIphone);
+  }
+
+  cap = capHaut;
   if (traitEnCours) dessiner();
 }
 
@@ -213,14 +312,17 @@ function surOrientation(e) {
 async function activerCapteurs() {
   if (capteursActifs) return true;
   try {
+    const demandesPermission = [];
     if (typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function") {
-      const reponses = await Promise.all([
-        DeviceMotionEvent.requestPermission(),
-        DeviceOrientationEvent.requestPermission()
-      ]);
-      if (reponses.some(r => r !== "granted")) return false;
+      demandesPermission.push(DeviceMotionEvent.requestPermission());
     }
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      demandesPermission.push(DeviceOrientationEvent.requestPermission());
+    }
+    const reponses = await Promise.all(demandesPermission);
+    if (reponses.some(r => r !== "granted")) return false;
   } catch (e) {
     return false;
   }
@@ -236,7 +338,7 @@ async function activerCapteurs() {
 
 
 // =====================================================
-// F. DÉMARRER / ARRÊTER UN TRAIT
+// G. DÉMARRER / ARRÊTER UN TRAIT
 // =====================================================
 
 // Ce que fait le QR code « début »
@@ -245,19 +347,29 @@ function demarrerTrait() {
     dire("Un trait est déjà en cours. Scannez le QR code « fin » pour l’arrêter.");
     return;
   }
-  position = { x: 0, y: 0 };
+  // Le trait commence tout de suite, à une position provisoire.
+  // Quand le GPS répond (quelques secondes), on le déplace au bon endroit.
+  position = { x: departPrecedent.x, y: departPrecedent.y };
   nbPas = 0;
-  traitEnCours = [{ x: 0, y: 0 }];
+  traitEnCours = [{ x: position.x, y: position.y }];
+  etatGps = "recherche en cours…";
+
   if (!capteursActifs) {
     dire("Trait démarré, mais les capteurs ne sont pas activés. Autorisez-les, ou utilisez le mode test.");
   } else {
-    dire("Trait en cours… Marchez en tenant le téléphone à plat, puis scannez le QR code « fin ».");
+    dire("Trait en cours… Marchez, téléphone à plat, haut du téléphone vers l’avant, puis scannez « fin ».");
     setTimeout(() => {
       if (traitEnCours && !capRecu) {
         dire("Aucune donnée de boussole reçue. Autorisez les capteurs de mouvement pour ce site.");
       }
     }, 3000);
   }
+
+  const monTrait = traitEnCours;
+  demanderGps(fix => {
+    if (traitEnCours !== monTrait) return;   // le trait a été arrêté entre-temps
+    appliquerDepartGps(fix);
+  });
   dessiner();
 }
 
@@ -276,7 +388,7 @@ function arreterTrait() {
 
 
 // =====================================================
-// G. LE SCANNER DE QR CODE
+// H. LE SCANNER DE QR CODE
 // =====================================================
 const video = document.getElementById("video");
 const zoneScan = document.getElementById("zoneScan");
@@ -338,14 +450,35 @@ let nbImages = 0;
 let texteScan = "";
 let minuteurAide = null;
 
+function expliquerErreurCamera(e) {
+  if (!window.isSecureContext) {
+    return "La caméra est bloquée car cette page n’est pas ouverte dans un contexte sécurisé. Ouvrez-la avec une adresse HTTPS ou depuis http://localhost (pas directement depuis les fichiers téléchargés).";
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return "Ce navigateur ne donne pas accès à la caméra. Ouvrez la page dans un navigateur récent et vérifiez qu’elle est servie en HTTPS.";
+  }
+  if (e && e.name === "NotAllowedError") {
+    return "L’accès à la caméra a été refusé. Autorisez la caméra pour ce site dans les réglages du navigateur, puis rechargez la page.";
+  }
+  if (e && e.name === "NotFoundError") {
+    return "Aucune caméra n’a été trouvée sur cet appareil.";
+  }
+  if (e && e.name === "NotReadableError") {
+    return "La caméra est déjà utilisée par une autre application ou n’a pas pu démarrer. Fermez les autres applications qui l’utilisent, puis réessayez.";
+  }
+  if (e && e.name === "OverconstrainedError") {
+    return "La caméra ne prend pas en charge les réglages demandés. Réessayez avec une autre caméra.";
+  }
+  return "Impossible de démarrer la caméra" + (e && e.name ? " (" + e.name + ")" : "") + ". Vérifiez ses autorisations et réessayez.";
+}
+
 async function demarrerScan() {
   if (scanEnCours) return;
-  dire("Préparation du scanner…");
-  const jsqrOk = await chargerJsQR();
-  if (!jsqrOk && !detecteurNatif) {
-    dire("Impossible de charger la bibliothèque de lecture des QR codes. Ajoutez le fichier jsQR.js à côté de la page, ou essayez avec les données mobiles.");
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    dire(expliquerErreurCamera());
     return;
   }
+  dire("Demande d’accès à la caméra…");
   try {
     flux = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -354,12 +487,25 @@ async function demarrerScan() {
         height: { ideal: 720 }
       }
     });
+    video.srcObject = flux;
+    await video.play();
   } catch (e) {
-    dire("Caméra indisponible ou refusée. Autorisez-la dans les réglages du navigateur.");
+    if (flux) flux.getTracks().forEach(t => t.stop());
+    flux = null;
+    video.srcObject = null;
+    dire(expliquerErreurCamera(e));
     return;
   }
-  video.srcObject = flux;
-  await video.play();
+
+  dire("Préparation du lecteur de QR code…");
+  const jsqrOk = await chargerJsQR();
+  if (!jsqrOk && !detecteurNatif) {
+    if (flux) flux.getTracks().forEach(t => t.stop());
+    flux = null;
+    video.srcObject = null;
+    dire("La caméra fonctionne, mais le lecteur QR n’a pas pu être chargé. Vérifiez votre connexion Internet ou placez jsQR.js à côté de cette page.");
+    return;
+  }
   zoneScan.style.display = "block";
   btnScan.style.display = "none";
   scanEnCours = true;
@@ -431,9 +577,11 @@ async function boucleScan() {
   requestAnimationFrame(boucleScan);
 }
 
-// Le clic sur "Scanner" : on active d'abord les capteurs (obligatoire sur iPhone), puis la caméra
+// Le clic sur "Scanner" : on active les capteurs (obligatoire juste après un clic sur iPhone),
+// on lance une première demande de GPS (pour obtenir l'autorisation à l'avance), puis la caméra.
 btnScan.addEventListener("click", async () => {
   await activerCapteurs();
+  if (!refGps) demanderGps(() => {});
   demarrerScan();
 });
 
@@ -444,29 +592,40 @@ document.getElementById("btnAnnulerScan").addEventListener("click", () => {
 
 
 // =====================================================
-// H. EFFACER
+// I. EFFACER
 // =====================================================
+// Si plus aucun trait n'existe, on oublie aussi l'origine du plan
+function reinitialiserSiVide() {
+  if (traits.length === 0 && !traitEnCours) {
+    refGps = null;
+    departPrecedent = { x: 0, y: 0 };
+    etatGps = "";
+  }
+}
+
 document.getElementById("effacerDernier").addEventListener("click", () => {
   traits.pop();
+  reinitialiserSiVide();
   dessiner();
 });
 document.getElementById("toutEffacer").addEventListener("click", () => {
   traits.length = 0;
+  reinitialiserSiVide();
   dessiner();
 });
 
 
 // =====================================================
-// I. MODE TEST (sans QR code et sans marcher)
+// J. MODE TEST (sans QR code et sans marcher)
 // =====================================================
 document.getElementById("demarrer").addEventListener("click", demarrerTrait);
 document.getElementById("arreter").addEventListener("click", arreterTrait);
 document.getElementById("gauche").addEventListener("click", () => {
-  cap = (cap - 30 + 360) % 360;
+  cap = normaliser(cap - 30);
   dessiner();
 });
 document.getElementById("droite").addEventListener("click", () => {
-  cap = (cap + 30) % 360;
+  cap = normaliser(cap + 30);
   dessiner();
 });
 document.getElementById("pasTest").addEventListener("click", faireUnPas);
@@ -475,3 +634,5 @@ dessiner();
 </script>
 </body>
 </html>
+
+
