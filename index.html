@@ -6,7 +6,7 @@
 <div class="row"><button id="choisir">📍 Placer le départ sur le plan</button><button id="btnScan">📷 Scanner le QR</button><button id="effacerDernier">Effacer le dernier tracé</button><button id="toutEffacer">Tout effacer</button></div>
 <div id="zoneScan"><video id="video" playsinline muted></video><button id="annuler">Annuler le scan</button></div>
 <div class="row"><label>Distance simulée 207 → bibliothèque : <input id="distance" type="number" min="1" max="500" value="80"> m</label><button id="maj">Appliquer</button><label><input id="sim" type="checkbox" checked> afficher le trajet simulé</label></div>
-<div class="row"><label>Angle du nord sur l’image : <input id="nord" type="number" min="-180" max="180" value="0">°</label><span class="hint">0° signifie que le nord pointe vers le haut de l’image.</span></div>
+<div class="row"><label>Angle du nord sur l’image : <input id="nord" type="number" min="-180" max="180" value="13">°</label><span class="hint">Réglé à 13° d’après le symbole N du plan. 0° signifie que le nord pointe vers le haut de l’image.</span></div>
 <div class="map"><canvas id="dessin" width="1536" height="1024"></canvas></div><div id="simStatus" class="hint"></div><div id="infos"></div>
 <p class="hint">Touchez le plan pour placer le QR « début ». Au scan, le GPS est enregistré avec sa précision estimée, mais le point dessiné reste celui choisi sur le plan. La flèche et le déplacement suivent le milieu du bord supérieur du téléphone.</p>
 <details><summary>Mode test</summary><div class="row"><button id="demarrer">▶ Démarrer</button><button id="arreter">■ Arrêter</button><button id="gauche">⟲ Tourner de 30°</button><button id="droite">⟳ Tourner de 30°</button><button id="pasTest">Faire un pas</button></div></details>
@@ -15,7 +15,7 @@
 // À remplacer après la visite : longueur réelle du trajet d'étalonnage.
 const DISTANCE_SIMULEE_M=80, LONGUEUR_PAS_M=.70, SEUIL_PAS=1.5, DELAI_PAS=350;
 // 0 si le nord indiqué sur le plan est vers le haut. Valeur à confirmer.
-let angleNord=0, distanceSimulee=DISTANCE_SIMULEE_M;
+let angleNord=13, distanceSimulee=DISTANCE_SIMULEE_M;
 const ZONES_INTERIEURES=[[[28,655],[775,655],[775,980],[28,980]],[[165,795],[1148,795],[1165,895],[165,895]],[[1080,18],[1490,18],[1490,995],[1040,995]],[[775,25],[1110,25],[1110,190],[1020,230],[775,215]],[[1000,155],[1115,140],[1218,255],[1110,320],[1030,240]]];
 const ROUTE_SIMULEE=[[180,840],[300,840],[470,840],[650,840],[820,840],[980,840],[1080,840],[1120,830],[1135,810],[1135,870],[1145,900],[1185,910],[1220,905],[1260,885]];
 function longueurPx(a){let s=0;for(let i=1;i<a.length;i++)s+=Math.hypot(a[i][0]-a[i-1][0],a[i][1]-a[i-1][1]);return s}
